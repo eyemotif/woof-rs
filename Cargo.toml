@@ -1,0 +1,10 @@
+[package]
+name = "woof"
+version = "0.1.0"
+edition = "2021"
+authors = ["eyemotif"]
+
+
+[dependencies]
+argh = "0.1.10"
+tiny_http = "0.12.0"
