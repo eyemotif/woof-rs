@@ -7,7 +7,7 @@ pub struct Server {
 
 impl Server {
     pub fn new(args: crate::cli::Args) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        let files = args
+        let raw_files = args
             .files
             .iter()
             .map(|path| std::path::Path::new(path))
@@ -24,10 +24,15 @@ impl Server {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        Ok(Self {
-            files: HashMap::from_iter(files),
-            args,
-        })
+        let mut files = HashMap::new();
+
+        for (name, file) in raw_files {
+            if files.insert(name.clone(), file).is_some() {
+                return Err(format!("Duplicate file name \"{name}\".").into());
+            }
+        }
+
+        Ok(Self { files, args })
     }
 
     pub fn host(self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
