@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 pub struct Server {
     files: HashMap<String, std::fs::File>,
+    args: crate::cli::Args,
 }
 
 impl Server {
@@ -25,20 +26,29 @@ impl Server {
 
         Ok(Self {
             files: HashMap::from_iter(files),
+            args,
         })
     }
 
     pub fn host(self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let server = tiny_http::Server::http("0.0.0.0:0")?;
+        let server = tiny_http::Server::http(format!("{}:{}", self.args.address, self.args.port))?;
         let index = include_str!("download.html");
 
-        println!("Server up at {}", server.server_addr());
+        self.args.log(format!(
+            "Server up at http://{}:{}",
+            if self.args.address == "0.0.0.0" {
+                "localhost"
+            } else {
+                &self.args.address
+            },
+            self.args.port
+        ));
 
         for request in server.incoming_requests() {
-            print_request(&request);
+            print_request(&self.args, &request);
 
             match request.url() {
-                "/" => {
+                "/" if !self.args.no_index => {
                     let index_with_links =
                         index.replace("{}", &self.get_download_links().join("\n"));
                     request.respond(
@@ -82,10 +92,10 @@ impl Server {
     }
 }
 
-fn print_request(request: &tiny_http::Request) {
+fn print_request(args: &crate::cli::Args, request: &tiny_http::Request) {
     if let Some(addr) = request.remote_addr() {
-        println!("{addr}>> {}", request.url())
+        args.log(format!("{addr}>> {}", request.url()));
     } else {
-        println!(">> {}", request.url())
+        args.log(format!(">> {}", request.url()));
     }
 }
