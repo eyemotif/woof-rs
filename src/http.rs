@@ -1,6 +1,10 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use tiny_http::Response;
+
+use crate::cli::FileOption;
+
 pub struct Server {
     files: HashMap<String, std::fs::File>,
     args: crate::cli::Args,
@@ -31,6 +35,10 @@ impl Server {
             .into_iter()
             .flatten()
             .collect::<Result<Vec<_>, _>>()?;
+
+        if raw_files.len() == 0 {
+            return Err("No files given.".into());
+        }
 
         let mut files = HashMap::new();
 
@@ -64,30 +72,43 @@ impl Server {
                 "/" if !self.args.no_index => {
                     let index_with_links =
                         index.replace("{}", &self.get_download_links().join("\n"));
-                    request.respond(
-                        tiny_http::Response::from_string(index_with_links).with_header(
-                            tiny_http::Header::from_bytes("Content-Type", "text/html").unwrap(),
-                        ),
-                    )?;
+                    request.respond(Response::from_string(index_with_links).with_header(
+                        tiny_http::Header::from_bytes("Content-Type", "text/html").unwrap(),
+                    ))?;
                 }
+                "/files" if matches!(self.args.file, FileOption::Bash) => {
+                    request.respond(Response::from_string(
+                        self.files
+                            .keys()
+                            .map(|name| {
+                                if name.contains(' ') {
+                                    format!("'{}'", name.replace('\'', r"'\''"))
+                                } else {
+                                    name.replace('\'', r"\'")
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                            .join(" "),
+                    ))?
+                }
+                "/files" if matches!(self.args.file, FileOption::Json) => request.respond(
+                    Response::from_string(format!("{:?}", self.files.keys().collect::<Vec<_>>())),
+                )?,
                 filepath => {
                     if let Some(file) = self
                         .files
                         .get(&filepath.chars().skip(1).collect::<String>())
                     {
                         match file.try_clone() {
-                            Ok(file) => request.respond(tiny_http::Response::from_file(file))?,
+                            Ok(file) => request.respond(Response::from_file(file))?,
                             Err(err) => request.respond(
-                                tiny_http::Response::from_string(format!(
-                                    "Error opening file: {err}"
-                                ))
-                                .with_status_code(500),
+                                Response::from_string(format!("Error opening file: {err}"))
+                                    .with_status_code(500),
                             )?,
                         }
                     } else {
                         request.respond(
-                            tiny_http::Response::from_string("File not found.")
-                                .with_status_code(404),
+                            Response::from_string("File not found.").with_status_code(404),
                         )?;
                     }
                 }
