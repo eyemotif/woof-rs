@@ -6,14 +6,25 @@ pub struct Server {
 
 impl Server {
     pub fn new(args: crate::cli::Args) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        let path = std::path::Path::new(&args.file);
-
-        if !path.try_exists()? {
-            return Err(format!("File {:?} not found.", args.file).into());
-        }
+        let files = args
+            .files
+            .iter()
+            .map(|path| std::path::Path::new(path))
+            .filter_map(|p| Some((p.file_name()?, p)))
+            .filter_map(|(name, p)| match p.try_exists() {
+                Ok(true) => Some(Ok((name, p))),
+                Ok(false) => None,
+                Err(err) => Some(Err(err)),
+            })
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .map(|(name, p)| {
+                std::fs::File::open(p).map(|f| (name.to_string_lossy().into_owned(), f))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(Self {
-            files: HashMap::from_iter([(args.file.clone(), std::fs::File::open(path)?)]),
+            files: HashMap::from_iter(files),
         })
     }
 
@@ -36,7 +47,6 @@ impl Server {
                         ),
                     )?;
                 }
-                "/favicon.ico" => request.respond(tiny_http::Response::from_data([]))?,
                 filepath => {
                     if let Some(file) = self
                         .files

@@ -3,7 +3,10 @@ mod http;
 
 fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let args = argh::from_env::<cli::Args>();
-    println!("{}", args.file);
+
+    if args.files.is_empty() {
+        return Err("No files given.".into());
+    }
 
     http::Server::new(args)?.host()?;
     Ok(())
