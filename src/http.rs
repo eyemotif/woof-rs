@@ -100,7 +100,7 @@ impl Server {
     fn get_download_links(&self) -> Vec<String> {
         self.files
             .keys()
-            .map(|k| format!("<a class=\"dl\" href=\"/{}\" download></a>", k))
+            .map(|k| format!("<a href=\"/{}\" download></a>", k))
             .collect()
     }
 }
