@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 pub struct Server {
     files: HashMap<String, std::fs::File>,
@@ -8,20 +9,27 @@ pub struct Server {
 impl Server {
     pub fn new(args: crate::cli::Args) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let raw_files = args
-            .files
+            .paths
             .iter()
-            .map(|path| std::path::Path::new(path))
-            .filter_map(|p| Some((p.file_name()?, p)))
-            .filter_map(|(name, p)| match p.try_exists() {
-                Ok(true) => Some(Ok((name, p))),
+            .map(|p| std::path::Path::new(p))
+            .filter_map(|p| match p.try_exists() {
+                Ok(true) => Some(Ok(p)),
                 Ok(false) => None,
                 Err(err) => Some(Err(err)),
             })
             .collect::<Result<Vec<_>, _>>()?
             .into_iter()
-            .map(|(name, p)| {
-                std::fs::File::open(p).map(|f| (name.to_string_lossy().into_owned(), f))
+            .map(|p| {
+                std::io::Result::Ok(
+                    get_paths_in(p)?
+                        .into_iter()
+                        .filter_map(|p| Some((p.file_name()?.to_string_lossy().into_owned(), p)))
+                        .map(|(name, p)| std::fs::File::open(p).map(|file| (name, file))),
+                )
             })
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .flatten()
             .collect::<Result<Vec<_>, _>>()?;
 
         let mut files = HashMap::new();
@@ -94,6 +102,22 @@ impl Server {
             .keys()
             .map(|k| format!("<a class=\"dl\" href=\"/{}\" download></a>", k))
             .collect()
+    }
+}
+
+fn get_paths_in<P: Into<PathBuf>>(outer_path: P) -> std::io::Result<Vec<PathBuf>> {
+    let outer_path = outer_path.into().canonicalize()?;
+    if outer_path.is_dir() {
+        // is there a way to do this with only one collect?
+        Ok(std::fs::read_dir(outer_path)?
+            .map(|entry| entry.and_then(|entry| get_paths_in(entry.path())))
+            .map(|files_result| files_result.map(|paths| paths.into_iter()))
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect())
+    } else {
+        Ok(vec![outer_path])
     }
 }
 

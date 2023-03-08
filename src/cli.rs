@@ -19,9 +19,10 @@ pub struct Args {
     #[argh(switch)]
     pub no_index: bool,
 
-    /// the files to host.
+    /// the files and folders to host. will host all the files if the path is a
+    /// folder. follows all symlinks.
     #[argh(positional, greedy)]
-    pub files: Vec<String>,
+    pub paths: Vec<String>,
 }
 
 impl Args {
