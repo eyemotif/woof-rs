@@ -142,6 +142,58 @@ impl Server {
 impl Server<UploadMode> {
     pub fn receive(self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let server = tiny_http::Server::http(format!("{}:{}", self.args.address, self.args.port))?;
+        let index = include_str!("upload.html");
+
+        self.args
+            .log(format!("Server up at {}", self.args.pretty_address()));
+
+        for mut request in server.incoming_requests() {
+            print_request(&self.args, &request);
+
+            match request.url() {
+                "/" => request.respond(Response::from_string(index).with_header(
+                    tiny_http::Header::from_bytes("Content-Type", "text/html").unwrap(),
+                ))?,
+                "/upload" if matches!(request.method(), &tiny_http::Method::Put) => {
+                    let mut buf = Vec::new();
+                    request.as_reader().read_to_end(&mut buf)?;
+
+                    match request
+                        .headers()
+                        .iter()
+                        .find(|header| header.field.equiv("File-Name"))
+                    {
+                        Some(file_name_header) => {
+                            if !self.files.filter.is_empty()
+                                && !self.files.filter.contains(file_name_header.value.as_str())
+                            {
+                                request.respond(Response::empty(200))?;
+                                continue;
+                            }
+
+                            match std::fs::write(file_name_header.value.as_str(), buf) {
+                                Ok(_) => request.respond(Response::empty(201))?,
+                                Err(err) => {
+                                    request.respond(Response::empty(500))?;
+                                    return Err(err.into());
+                                }
+                            }
+                        }
+                        None => request.respond(
+                            Response::from_string("Could not find File-Name header")
+                                .with_status_code(400),
+                        )?,
+                    }
+                }
+                "/upload" => request.respond(
+                    Response::from_string("Redirecting you back...")
+                        .with_status_code(308)
+                        .with_header(tiny_http::Header::from_bytes("Location", "/").unwrap()),
+                )?,
+                _ => request
+                    .respond(Response::from_string("File not found.").with_status_code(404))?,
+            }
+        }
 
         self.args
             .log(format!("Server up at {}", self.args.pretty_address()));
@@ -167,8 +219,8 @@ fn get_paths_in<P: Into<PathBuf>>(outer_path: P) -> std::io::Result<Vec<PathBuf>
 
 fn print_request(args: &crate::cli::Args, request: &tiny_http::Request) {
     if let Some(addr) = request.remote_addr() {
-        args.log(format!("{addr}>> {}", request.url()));
+        args.log(format!("{addr}>> {} {}", request.method(), request.url()));
     } else {
-        args.log(format!(">> {}", request.url()));
+        args.log(format!(">> {} {}", request.method(), request.url()));
     }
 }
