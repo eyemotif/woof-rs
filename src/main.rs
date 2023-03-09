@@ -5,7 +5,7 @@ fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let args = argh::from_env::<cli::Args>();
 
     if args.upload {
-        http::Server::new_upload(args).receive()?;
+        http::Server::new_upload(args)?.receive()?;
     } else {
         http::Server::new(args)?.host()?;
     }

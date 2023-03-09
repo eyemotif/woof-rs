@@ -27,6 +27,10 @@ pub struct Args {
     #[argh(option, default = "0", short = 'c')]
     pub count: usize,
 
+    /// in upload mode, the directory to download the files to.
+    #[argh(option, default = "Args::default_path()", short = 'o')]
+    pub output: std::path::PathBuf,
+
     /// in default mode, disable serving an index that automagically downloads
     /// all the files when opened by a browser
     #[argh(switch)]
@@ -61,6 +65,9 @@ impl Args {
         if !self.quiet {
             println!("{}", message.into())
         }
+    }
+    fn default_path() -> std::path::PathBuf {
+        std::env::current_dir().unwrap_or_default()
     }
 }
 

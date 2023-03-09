@@ -12,6 +12,7 @@ pub struct DefaultMode(HashMap<String, std::fs::File>);
 pub struct UploadMode {
     filter: HashSet<String>,
     left: usize,
+    output: PathBuf,
 }
 
 impl Server {
@@ -58,14 +59,29 @@ impl Server {
         })
     }
 
-    pub fn new_upload(args: crate::cli::Args) -> Server<UploadMode> {
-        Server {
+    pub fn new_upload(
+        args: crate::cli::Args,
+    ) -> Result<Server<UploadMode>, Box<dyn std::error::Error + Send + Sync>> {
+        if args.output == PathBuf::default() {
+            return Err(
+                "Could not access the current working directory, or no output path input.".into(),
+            );
+        }
+        if !args.output.try_exists()? {
+            return Err("Output path does not exist.".into());
+        }
+        if !args.output.is_dir() {
+            return Err("Output path is not a directory.".into());
+        }
+
+        Ok(Server {
             files: UploadMode {
                 filter: HashSet::from_iter(args.paths.clone()),
                 left: args.count,
+                output: args.output.clone(),
             },
             args,
-        }
+        })
     }
 
     pub fn host(self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -171,7 +187,10 @@ impl Server<UploadMode> {
                                 continue;
                             }
 
-                            match std::fs::write(file_name_header.value.as_str(), buf) {
+                            let mut file_path = self.files.output.clone();
+                            file_path.push(file_name_header.value.as_str());
+
+                            match std::fs::write(file_path, buf) {
                                 Ok(_) => {
                                     request.respond(Response::empty(201))?;
 
