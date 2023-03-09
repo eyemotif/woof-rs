@@ -1,13 +1,17 @@
-use std::collections::HashMap;
+use crate::cli::FileOption;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-
 use tiny_http::Response;
 
-use crate::cli::FileOption;
-
-pub struct Server {
-    files: HashMap<String, std::fs::File>,
+pub struct Server<F = DefaultMode> {
+    files: F,
     args: crate::cli::Args,
+}
+
+pub struct DefaultMode(HashMap<String, std::fs::File>);
+pub struct UploadMode {
+    filter: HashSet<String>,
+    left: usize,
 }
 
 impl Server {
@@ -48,22 +52,28 @@ impl Server {
             }
         }
 
-        Ok(Self { files, args })
+        Ok(Self {
+            files: DefaultMode(files),
+            args,
+        })
+    }
+
+    pub fn new_upload(args: crate::cli::Args) -> Server<UploadMode> {
+        Server {
+            files: UploadMode {
+                filter: HashSet::from_iter(args.paths.clone()),
+                left: args.count,
+            },
+            args,
+        }
     }
 
     pub fn host(self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let server = tiny_http::Server::http(format!("{}:{}", self.args.address, self.args.port))?;
         let index = include_str!("download.html");
 
-        self.args.log(format!(
-            "Server up at http://{}:{}",
-            if self.args.address == "0.0.0.0" {
-                "localhost"
-            } else {
-                &self.args.address
-            },
-            self.args.port
-        ));
+        self.args
+            .log(format!("Server up at {}", self.args.pretty_address()));
 
         for request in server.incoming_requests() {
             print_request(&self.args, &request);
@@ -79,6 +89,7 @@ impl Server {
                 "/files" if matches!(self.args.file, FileOption::Bash) => {
                     request.respond(Response::from_string(
                         self.files
+                            .0
                             .keys()
                             .map(|name| {
                                 if name.contains(' ') {
@@ -92,11 +103,12 @@ impl Server {
                     ))?
                 }
                 "/files" if matches!(self.args.file, FileOption::Json) => request.respond(
-                    Response::from_string(format!("{:?}", self.files.keys().collect::<Vec<_>>())),
+                    Response::from_string(format!("{:?}", self.files.0.keys().collect::<Vec<_>>())),
                 )?,
                 filepath => {
                     if let Some(file) = self
                         .files
+                        .0
                         .get(&filepath.chars().skip(1).collect::<String>())
                     {
                         match file.try_clone() {
@@ -120,9 +132,20 @@ impl Server {
 
     fn get_download_links(&self) -> Vec<String> {
         self.files
+            .0
             .keys()
             .map(|k| format!("<a href=\"/{}\" download></a>", k))
             .collect()
+    }
+}
+
+impl Server<UploadMode> {
+    pub fn receive(self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let server = tiny_http::Server::http(format!("{}:{}", self.args.address, self.args.port))?;
+
+        self.args
+            .log(format!("Server up at {}", self.args.pretty_address()));
+        Ok(())
     }
 }
 
