@@ -140,7 +140,7 @@ impl Server {
 }
 
 impl Server<UploadMode> {
-    pub fn receive(self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub fn receive(mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let server = tiny_http::Server::http(format!("{}:{}", self.args.address, self.args.port))?;
         let index = include_str!("upload.html");
 
@@ -172,7 +172,16 @@ impl Server<UploadMode> {
                             }
 
                             match std::fs::write(file_name_header.value.as_str(), buf) {
-                                Ok(_) => request.respond(Response::empty(201))?,
+                                Ok(_) => {
+                                    request.respond(Response::empty(201))?;
+
+                                    if self.files.left > 0 {
+                                        self.files.left -= 1;
+                                        if self.files.left == 0 {
+                                            break;
+                                        }
+                                    }
+                                }
                                 Err(err) => {
                                     request.respond(Response::empty(500))?;
                                     return Err(err.into());
@@ -195,8 +204,6 @@ impl Server<UploadMode> {
             }
         }
 
-        self.args
-            .log(format!("Server up at {}", self.args.pretty_address()));
         Ok(())
     }
 }

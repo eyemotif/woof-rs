@@ -14,6 +14,9 @@
     <div>
         <button id="submit">Submit</button>
     </div>
+    <div>
+        <p id="error"></p>
+    </div>
 </body>
 
 <script>
@@ -27,7 +30,11 @@
 
             for (const file of input.files) {
                 const data = await file.arrayBuffer()
+                    .catch(e => document.getElementById('error').innerText = `${e}`)
+
                 fetch('/upload', { method: 'PUT', body: data, headers: { "File-Name": file.name } })
+                    .catch(e => document.getElementById('error').innerText = `${e}`)
+
             }
 
         }
